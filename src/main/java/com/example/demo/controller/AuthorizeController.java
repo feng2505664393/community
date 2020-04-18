@@ -2,12 +2,18 @@ package com.example.demo.controller;
 
 import com.example.demo.dto.AccessTokenDTO;
 import com.example.demo.dto.GithubUser;
+import com.example.demo.mapper.UserMapper;
+import com.example.demo.model.User;
 import com.example.demo.provider.GithubProvider;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+
+import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.util.UUID;
 
 @Controller
 public class AuthorizeController {
@@ -15,9 +21,14 @@ public class AuthorizeController {
     @Autowired
     private GithubProvider githubProvider;
 
+    @Autowired
+    private UserMapper userMapper;
+
     @GetMapping("/callback")
     public String callback(@RequestParam(name="code") String code,
-                           @RequestParam(name="state") String state){
+                           @RequestParam(name="state") String state,
+                           HttpServletRequest httpServletRequest,
+                           HttpServletResponse httpServletResponse){
         AccessTokenDTO atd = new AccessTokenDTO();
         atd.setCode(code);
         atd.setState(state);
@@ -26,10 +37,25 @@ public class AuthorizeController {
         atd.setRedirect_url("http://localhost:8887/callback");
 
         String accessToken = githubProvider.getAccessToken(atd);
-        GithubUser user = githubProvider.getUser(accessToken);
+        GithubUser githubUser = githubProvider.getUser(accessToken);
+        if(githubUser!=null){
+            //登陆成功
+            User user = new User();
+            user.setAccountId(String.valueOf(githubUser.getId()));
+            user.setName(githubUser.getName());
+            user.setGmtCreate(System.currentTimeMillis());
+            user.setGmtModified(user.getGmtCreate());
+            String token = UUID.randomUUID().toString();
+            user.setToken(token);
+            httpServletResponse.addCookie(new Cookie("token",token));
 
-        //System.out.println(user.getName());
-        System.out.println(user.getLogin());
-        return "index";
+            userMapper.insert(user);
+            httpServletRequest.getSession().setAttribute("user",githubUser);
+            System.out.println("登录成功");
+        }else{
+            //登录失败
+            System.out.println("登录失败");
+        }
+        return "redirect:/";
     }
 }
